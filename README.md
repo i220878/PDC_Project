@@ -6,10 +6,10 @@ Repository for Parallel and Distributed Computing Project where the research pap
 
 In bipartite graphs, a Butterfly is a four-vertex subgraph with two vertices on each side. It represents the following edges:
 
-U1 ---- V1
-U1 ---- V2
-U2 ---- V1
-U2 ---- V2
+- U1 ---- V1
+- U1 ---- V2
+- U2 ---- V1
+- U2 ---- V2
 
 When this is plotted properly this will produce the shape of a Butterfly, however some people may also refer to it as an Hourglass. Butterfly computations are fundamental for detecting patterns and dense local structures, showing overlap, similarity, and community behaviour in a network. This is further used for ranking algorithms, visualizations, and compressions of graphs. They provide a rich structural insight into how entities in a bipartite system relate and interact. A list of real world examples is as follows:
 
