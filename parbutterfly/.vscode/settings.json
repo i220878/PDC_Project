@@ -1,0 +1,17 @@
+{
+    "files.associations": {
+        "adjGraphAddWeights.C": "cpp",
+        "rMatGraph.C": "cpp",
+        "gridGraph.C": "cpp",
+        "hyperAdjToBinary.C": "cpp",
+        "KONECTtoHyperAdj.C": "cpp",
+        "randHypergraph.C": "cpp",
+        "randLocalGraph.C": "cpp",
+        "SNAPtoAdj.C": "cpp",
+        "wghSNAPtoAdj.C": "cpp",
+        "zipfHypergraph.C": "cpp",
+        "adjToBinary.C": "cpp",
+        "adjHypergraphAddWeights.C": "cpp",
+        "BipartiteButterflies.C": "cpp"
+    }
+}
