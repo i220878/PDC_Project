@@ -138,57 +138,41 @@ int main() {
     t1.stop();
     t1.reportTotal("file_reading");
 
-    // Vertices for V + Vertices for U for the adjacency list
     t1.start();
-    int** adj = new int*[v2 + v1];
-    for (int i = 0; i < v2 + v1; ++i) {
-        adj[i] = new int[v2 + v1];
-        for (int j = 0; j < v2 + v1; ++j)
-            adj[i][j] = 0;
-    }
-    
-    // 0..vV - 1 rows and cols are both for first bipartition
-    // vV..vU - 1 rows and cols are both for second bipartition
+
+    int totalVertices = v1 + v2;
+    vector<vector<int>> neighbors(totalVertices);
+    // For each V‐node i, its neighbors are the U‐nodes (edges) incident to it:
     for (int i = 0; i < v1; ++i) {
-        int startV = offsetsV[i];
-        // since the end offset is non-inclusive,
-        // and if it's the last vertex, then it has as many edges
-        // as total left to occupy
-        int endV = i + 1 < v1 ? offsetsV[i + 1] : e1;
-        
-        for (int j = startV; j < endV; ++j) {
-            int edge = edgesV[j];
-            adj[i][v1 + edge] = 1;
-            adj[v1 + edge][i] = 1;
+        int start = offsetsV[i];
+        int end   = (i + 1 < v1 ? offsetsV[i + 1] : e1);
+        for (int j = start; j < end; ++j) {
+            int edgeId = edgesV[j];      // this is a U‐node index
+            neighbors[i].push_back(v1 + edgeId);
         }
     }
 
-    for (int i = 0; i < v2; ++i) {
-        int startV = offsetsU[i];
-        int endV = i + 1 < v2 ? offsetsU[i + 1] : e2;
-        
-        for (int j = startV; j < endV; ++j) {
-            int edge = edgesU[j];
-            adj[i + v1][edge] = 1;
-            adj[edge][i + v1] = 1;
+    // For each U‐node k, its neighbors are the two endpoints in V:
+    for (int k = 0; k < v2; ++k) {
+        int start = offsetsU[k];
+        int end   = (k + 1 < v2 ? offsetsU[k + 1] : e2);
+        for (int j = start; j < end; ++j) {
+            int author = edgesU[j];      // this is a V‐node index
+            neighbors[v1 + k].push_back(author);
         }
     }
+
     t1.stop();
-    t1.reportTotal("Crafting adjacency list");
+    t1.reportTotal("Constructing neighbors");
 
     /*
         STEP 1: COMPUTE VERTEX RANK -- USING DEGREE ORDER
     */
     t1.start();
-    int totalVertices = v1 + v2;
     vector<int> degrees(totalVertices);
 
     for (int i = 0; i < totalVertices; ++i) {
-        int curDegree = 0;
-        for (int j = 0; j < totalVertices; ++j) {
-            if (adj[i][j] == 1) curDegree += 1;
-        }
-        degrees[i] = curDegree;
+        degrees[i] = neighbors[i].size();
     }
 
     vector<int> sortedVertices(totalVertices);
@@ -206,17 +190,8 @@ int main() {
     for (int i = 0; i < totalVertices; ++i) {
         int idx = sortedVertices[i];
         ranks[idx] = i;
-    }
-
-    vector<vector<int>> neighbors(totalVertices);
-
-    for (int i = 0; i < totalVertices; ++i) {
-        for (int j = 0; j < totalVertices; ++j) {
-            if (adj[i][j] == 1)
-                neighbors[i].push_back(j);
-        }
-    }
-
+    }   
+    
     // Sorting neighbours in decreasing (descending) order of rank[neighbour]
     for (int i = 0; i < totalVertices; ++i) {
         std::sort(neighbors[i].begin(), neighbors[i].end(), [&ranks](int a, int b) {
