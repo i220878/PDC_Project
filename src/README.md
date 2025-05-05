@@ -1,13 +1,14 @@
 # Running
 
-Currently, the code is sequential and uses the following methods:
+Currently, sequential and parallel implementations have been done:
 1. Degree-based Ranking
 2. Sorting for Wedge aggregation
 3. SEQUENTIAL butterfly counting, NO atomic adds or batching yet.
 4. NO Peeling / decomposition implemented.
 5. NO Approximation implemented.
 
-Simply compile the file with `g++` and run it, the input file required is in `../input/fixed_graph.txt`.
+Simply compile the file with `make` and run `./SequentialBipartiteButterflies` for the sequential version, or `./ParallelBipartiteButterflies` for the Bipartite Implementation.
+Further parallel optimisations should be made
 
 The input format is as follows:
 
