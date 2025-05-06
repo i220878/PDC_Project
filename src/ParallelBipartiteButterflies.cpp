@@ -7,8 +7,11 @@
 #include <map>
 #include <unordered_map>
 #include <cmath>
+#include <cmath>
 #include "gettime.h"
 #include <omp.h>
+#include "parseCommandLine.h"
+#include "bucket.h"
 #include "parseCommandLine.h"
 #include "bucket.h"
 
@@ -16,6 +19,9 @@ using namespace std;
 
 template<typename T>
 void printOffsetsAndEdges(std::vector<T> off1,
+                          std::vector<T> edge1,
+                          std::vector<T> off2,
+                          std::vector<T> edge2) {
                           std::vector<T> edge1,
                           std::vector<T> off2,
                           std::vector<T> edge2) {
@@ -807,6 +813,8 @@ int main(int argc, char** argv) {
     t1.start();
 
     std::ifstream file(filename);
+
+    std::ifstream file(filename);
     // Line is first index of file
     std::string line;
 
@@ -820,8 +828,15 @@ int main(int argc, char** argv) {
     // v2 = Number of Vertices for bipartition U,
     // e2 = Number of Edges for bipartition U
     int v1,e1,v2,e2;
+    // v1 = Number of Vertices for bipartition V,
+    // e1 = Number of Edges for bipartition V,
+    // v2 = Number of Vertices for bipartition U,
+    // e2 = Number of Edges for bipartition U
+    int v1,e1,v2,e2;
     getline(file, line);
     if (line != "AdjacencyHypergraph") {
+        std::cerr << "Error: First line must be 'AdjacencyHypergraph'"
+                  << std::endl;
         std::cerr << "Error: First line must be 'AdjacencyHypergraph'"
                   << std::endl;
         return 1;
@@ -847,6 +862,7 @@ int main(int argc, char** argv) {
     for (int i = 0; i < e1; ++i) {
         getline(file, line);
         std::istringstream(line) >> edgesV[i];
+    }
     }
     for (int i = 0; i < v2; ++i) {
         getline(file, line);
@@ -941,11 +957,24 @@ int main(int argc, char** argv) {
 
     /*
         STEP 1: COMPUTE VERTEX RANK
+        STEP 1: COMPUTE VERTEX RANK
     */
     t1.start();
     vector<int> degrees(totalVertices), sortedVertices(totalVertices), ranks(totalVertices);
+    vector<int> degrees(totalVertices), sortedVertices(totalVertices), ranks(totalVertices);
     vector<vector<int>> modifiedNeighbors(totalVertices);
 
+    if (rankType == "DEG") {
+        computeDegreeOrder(neighbors, degrees, sortedVertices, ranks, modifiedNeighbors);
+        }
+    else if (rankType == "SIDE") {
+        computeSideOrder(v1, v2, offsetsV, e1, offsetsU, e2, neighbors, ranks, modifiedNeighbors);
+    }
+    else if (rankType == "ADEG") {
+        computeApproxDegreeOrder(neighbors, degrees, sortedVertices, ranks, modifiedNeighbors);
+    }
+    else {
+        cmd.badArgument();
     if (rankType == "DEG") {
         computeDegreeOrder(neighbors, degrees, sortedVertices, ranks, modifiedNeighbors);
         }
@@ -964,12 +993,15 @@ int main(int argc, char** argv) {
         We define a modified degree,
         degv (u), to be the number of neighbors u′ ∈ N (u) such that
         rank(u′) > rank(v)
+        rank(u′) > rank(v)
 
         NOTE: MODIFIED DEGREE is simply modifiedNeighbors[index].size()
     */
 
     /*
         STEP 2: WEDGE RETRIEVAL / ENUMERATION
+    */
+    // Build modifiedNeighbors based on ranks
     */
     // Build modifiedNeighbors based on ranks
     // 2: Use PREFIX-SUM to compute a function I that maps wedges to indices in order
@@ -986,6 +1018,7 @@ int main(int argc, char** argv) {
     // 2) For each (u1, v), we calculate how many possible u2's it results in, i.e how many neighbors of v that have a rank
     // greater than v
     vector<int> secondNeighbors(M);
+    #pragma omp parallel for schedule(dynamic)
     #pragma omp parallel for schedule(dynamic)
     for (int u1 = 0; u1 < totalVertices; ++u1) {
         int modDeg = (int)modifiedNeighbors[u1].size();
@@ -1014,6 +1047,7 @@ int main(int argc, char** argv) {
 
     t1.start();
     int totalWedges = (int)secondNeighborsPrefixSum[M];
+    int totalWedges = (int)secondNeighborsPrefixSum[M];
     // 3: Initialize W to be an array of wedges
     vector<Wedge> W(totalWedges);
     t1.stop();
@@ -1031,8 +1065,19 @@ int main(int argc, char** argv) {
     }
     cout << "\nTOTAL NEIGHBORS IN EACH MODIFIED NEIGHBOR: " << sum << '\n';
     //*/
+    
+    /*\ Debugging I did to check if different rankTypes were effecting the creation
+    of modifiedNeighbors
+    cout << "\nOUTPUTTING MODIFIED NEIGHBORS SIZE: " << modifiedNeighbors.size();
+    int sum = 0;
+    for (int i = 0; i < modifiedNeighbors.size(); ++i) {
+        sum += modifiedNeighbors[i].size();
+    }
+    cout << "\nTOTAL NEIGHBORS IN EACH MODIFIED NEIGHBOR: " << sum << '\n';
+    //*/
     #pragma omp parallel for schedule(dynamic)
     for (int u1 = 0; u1 < totalVertices; ++u1) {
+        int modDeg = modifiedNeighbors[u1].size();
         int modDeg = modifiedNeighbors[u1].size();
         // 5: parfor i ← 0 to degu1 (u1) do
         for (int i = 0; i < modDeg; ++i) {
@@ -1040,6 +1085,8 @@ int main(int argc, char** argv) {
             // neighbors that are greater rank than the vertex.
             // 6: v ← N (u1)[i] . v = ith neighbor of u1
             int v = modifiedNeighbors[u1][i];
+            int base = (int)secondNeighborsPrefixSum[
+                          immediateNeighbors[u1] + i];
             int base = (int)secondNeighborsPrefixSum[
                           immediateNeighbors[u1] + i];
             int cnt = 0;
@@ -1246,3 +1293,4 @@ int main(int argc, char** argv) {
 
     return 0;
 }
+
