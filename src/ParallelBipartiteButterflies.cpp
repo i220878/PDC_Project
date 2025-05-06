@@ -15,7 +15,7 @@
 using namespace std;
 
 // Define number of threads globally
-int numThreads = 12;
+int numThreads = 6;
 
 template<typename T>
 void printOffsetsAndEdges(std::vector<T> off1,
