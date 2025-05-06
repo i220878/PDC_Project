@@ -8,8 +8,9 @@
 #include <unordered_map>
 #include <cmath>
 #include "gettime.h"
-#include <omp.h>
-#include "parseCommandLine.h"   // PBBS command‐line parser
+// #include <omp.h>
+#include "parseCommandLine.h"
+#include "bucket.h"
 
 using namespace std;
 
@@ -39,11 +40,8 @@ void printOffsetsAndEdges(std::vector<T> off1,
 
 void printAdjacencyList(int** adj, int v1, int v2) {
     int n = v1 + v2;
-    // width to print each index (for alignment)
     int w = 2; // adjust if your n > 99
 
-    // 1) Column headers
-    //    indent to align under row-labels (w+1 chars)
     bool recount = false;
     cout << string(w+3, ' ');
     for (int j = 0; j < n; ++j) {
@@ -55,7 +53,6 @@ void printAdjacencyList(int** adj, int v1, int v2) {
         }
     }
     cout << "\n";
-    // 2) Separator line
     cout << string(w+1, ' ');
     for (int j = 0; j < n; ++j) {
         cout << string(w, '-') << '-';
@@ -63,18 +60,14 @@ void printAdjacencyList(int** adj, int v1, int v2) {
     }
     cout << "\n";
 
-    // 3) Each row
     recount = false;
     for (int i = 0; i < n; ++i) {
-        // row label
         if (recount) cout << setw(w) << i - v1 << ' ';
         else cout << setw(w) << i << ' ';
         cout << "| ";
         if (i == v1 - 1) {
             recount = true;
         }
-
-        // row entries
         for (int j = 0; j < n; ++j) {
             cout << setw(w) << adj[i][j] << ' ';
             if (j == v1-1) cout << "| ";
@@ -99,15 +92,14 @@ void computeDegreeOrder(
     for (int u = 0; u < n; ++u) {
         sortedVertices[u] = u;
     }
-    // Vertices ordered in ascending order of degree
     sort(sortedVertices.begin(), sortedVertices.end(),
          [&degrees](int a, int b) {
-             return degrees[a] < degrees[b];
+             return degrees[a] > degrees[b];
          });
     for (int i = 0; i < n; ++i) {
         ranks[sortedVertices[i]] = i;
     }
-    // Neighbors are sorted in descending order of rank
+    // #pragma omp parallel for schedule(dynamic)
     for (int u = 0; u < n; ++u) {
         auto& N = neighbors[u];
         sort(N.begin(), N.end(),
@@ -115,8 +107,7 @@ void computeDegreeOrder(
                  return ranks[a] > ranks[b];
              });
     }
-    // Modified neighbors has neighbors with rank[neighbor] > vertex,
-    // all of a vertex's neighbors will have a rank greater than it 
+    // #pragma omp parallel for schedule(dynamic)
     for (int u = 0; u < n; ++u) {
         auto& M = modifiedNeighbors[u];
         M.clear();
@@ -143,20 +134,19 @@ void computeApproxDegreeOrder(
     for (int u = 0; u < n; ++u) {
         sortedVertices[u] = u;
     }
-    // Vertices ordered in ascending order of degree
     sort(sortedVertices.begin(), sortedVertices.end(),
     [&degrees](int a, int b) {
-        double da = log(degrees[a] > 0 ? degrees[a] : 1);
-        double db = log(degrees[b] > 0 ? degrees[b] : 1);
+        int da = floor(log2(degrees[a] > 0 ? degrees[a] : 1));
+        int db = floor(log2(degrees[b] > 0 ? degrees[b] : 1));
         if (da != db)
             return da > db;
-        return a < b;  // tie‐break on index
+        return a < b;
     });
 
     for (int i = 0; i < n; ++i) {
         ranks[sortedVertices[i]] = i;
     }
-    // Neighbors are sorted in descending order of rank
+    // #pragma omp parallel for schedule(dynamic)
     for (int u = 0; u < n; ++u) {
         auto& N = neighbors[u];
         sort(N.begin(), N.end(),
@@ -164,8 +154,7 @@ void computeApproxDegreeOrder(
                  return ranks[a] > ranks[b];
              });
     }
-    // Modified neighbors has neighbors with rank[neighbor] > vertex,
-    // all of a vertex's neighbors will have a rank greater than it 
+    // #pragma omp parallel for schedule(dynamic)
     for (int u = 0; u < n; ++u) {
         auto& M = modifiedNeighbors[u];
         M.clear();
@@ -188,7 +177,6 @@ void computeSideOrder(
 ) {
     int n = v1 + v2;
 
-    // 1) Count wedges in V
     double wedgeV = 0;
     for (int i = 0; i < v1; ++i) {
         int start = offsetsV[i];
@@ -197,40 +185,37 @@ void computeSideOrder(
         wedgeV += d * (d - 1) / 2;
     }
 
-    // 2) Count wedges in U
     double wedgeU = 0;
     for (int j = 0; j < v2; ++j) {
         int start = offsetsU[j];
         int end = (j + 1 < v2 ? offsetsU[j + 1] : e2);
         int d = end - start;
-        wedgeU += (int64_t)d * (d - 1) / 2;
+        wedgeU += d * (d - 1) / 2;
     }
 
-    // 3) Assign global ranks
     ranks.resize(n);
     if (wedgeV <= wedgeU) {
-        // V side first: V[0..v1-1], then U[v1..v1+v2-1]
         for (int i = 0; i < v1; ++i)
             ranks[i] = i;
         for (int j = 0; j < v2; ++j)
             ranks[v1 + j] = v1 + j;
     } else {
-        // U side first: U[v1..v1+v2-1] get ranks [0..v2-1], then V[0..v1-1] get [v2..v2+v1-1]
         for (int j = 0; j < v2; ++j)
             ranks[v1 + j] = j;
         for (int i = 0; i < v1; ++i)
             ranks[i] = v2 + i;
     }
 
-    // 4) Sort each adjacency in descending rank order
+    // #pragma omp parallel for schedule(dynamic)
     for (int u = 0; u < n; ++u) {
         auto& N = neighbors[u];
         sort(N.begin(), N.end(),
-             [&ranks](int a, int b) { return ranks[a] > ranks[b]; });
+             [&ranks](int a, int b) {
+                 return ranks[a] > ranks[b];
+             });
     }
-
-    // 5) Build modifiedNeighbors[u] = { v ∈ neighbors[u] | rank[v] > rank[u] }
     modifiedNeighbors.resize(n);
+    // #pragma omp parallel for schedule(dynamic)
     for (int u = 0; u < n; ++u) {
         auto& M = modifiedNeighbors[u];
         M.clear();
@@ -246,29 +231,450 @@ struct Wedge {
     int endpoint1, endpoint2, center;
 };
 
-/* WEDGE AGGREGATION VIA SORTING */
-void aggregateWedgesSorting(
-    const vector<Wedge>&                         W,
-    vector<pair<pair<int,int>,int>>&             endpointWedgeFrequency,
-    vector<int>&                                 uniqueWedgeIndexes
+struct PairHash {
+    size_t operator()(pair<int,int> const &p) const {
+      return (size_t)p.first * 1000003u + p.second;
+    }
+};
+
+void aggregateWedgesSort(
+    const vector<Wedge>& wedges,
+    vector<pair<pair<int,int>,int>>& groups,
+    vector<int>& groupOffsets
 ) {
-    int n = W.size();
-    endpointWedgeFrequency.clear();
-    uniqueWedgeIndexes.clear();
-    int i = 0;
-    while (i < n) {
-        int u1 = W[i].endpoint1;
-        int u2 = W[i].endpoint2;
+    int m = (int)wedges.size();
+    vector<Wedge> sortedWedges = wedges;
+    sort(sortedWedges.begin(), sortedWedges.end(),
+         [](const Wedge& a, const Wedge& b) {
+             if (a.endpoint1 != b.endpoint1) return a.endpoint1 < b.endpoint1;
+             return a.endpoint2 < b.endpoint2;
+         });
+    groups.clear();
+    groupOffsets.clear();
+    groupOffsets.push_back(0);
+    for (int i = 0; i < m; ) {
+        int u1 = sortedWedges[i].endpoint1, u2 = sortedWedges[i].endpoint2;
         int j = i + 1;
-        while (j < n &&
-               W[j].endpoint1 == u1 &&
-               W[j].endpoint2 == u2) {
+        while (j < m && sortedWedges[j].endpoint1 == u1 && sortedWedges[j].endpoint2 == u2) ++j;
+        int freq = j - i;
+        groups.emplace_back(make_pair(u1, u2), freq);
+        groupOffsets.push_back(j);
+        i = j;
+    }
+}
+
+void aggregateWedgesHash(
+    const vector<Wedge>& wedges,
+    vector<pair<pair<int,int>,int>>& groups,
+    vector<int>& groupOffsets
+) {
+    int m = (int)wedges.size();
+    int T = 1; // omp_get_max_threads();
+    vector<unordered_map<pair<int,int>, int, PairHash>> localMaps(T);
+    // #pragma omp parallel
+    {
+        int tid = 0; // omp_get_thread_num();
+        auto& myMap = localMaps[tid];
+        // #pragma omp for schedule(dynamic)
+        for (int i = 0; i < m; ++i) {
+            auto key = make_pair(wedges[i].endpoint1, wedges[i].endpoint2);
+            myMap[key]++;
+        }
+    }
+    unordered_map<pair<int,int>, int, PairHash> freq;
+    freq.reserve(m);
+    for (int t = 0; t < T; ++t) {
+        for (auto& kv : localMaps[t]) {
+            freq[kv.first] += kv.second;
+        }
+    }
+    groups.clear();
+    groupOffsets.clear();
+    groupOffsets.push_back(0);
+    vector<pair<int,int>> keys;
+    keys.reserve(freq.size());
+    for (auto& kv : freq) keys.push_back(kv.first);
+    sort(keys.begin(), keys.end());
+    int pos = 0;
+    for (auto& k : keys) {
+        int d = freq[k];
+        groups.emplace_back(k, d);
+        pos += d;
+        groupOffsets.push_back(pos);
+    }
+}
+
+void aggregateWedgesBatch(
+    const vector<Wedge>& wedges,
+    vector<pair<pair<int,int>,int>>& groups,
+    vector<int>& groupOffsets
+) {
+    int m = (int)wedges.size();
+    const int B = 1024;
+    int T = 1; // omp_get_max_threads();
+    vector<unordered_map<pair<int,int>, int, PairHash>> localMaps(T);
+    // #pragma omp parallel
+    {
+        int tid = 0; // omp_get_thread_num();
+        auto& myMap = localMaps[tid];
+        // #pragma omp for schedule(dynamic)
+        for (int s = 0; s < m; s += B) {
+            int e = min(m, s + B);
+            for (int i = s; i < e; ++i) {
+                auto key = make_pair(wedges[i].endpoint1, wedges[i].endpoint2);
+                myMap[key]++;
+            }
+        }
+    }
+    unordered_map<pair<int,int>, int, PairHash> freq;
+    freq.reserve(m);
+    for (int t = 0; t < T; ++t) {
+        for (auto& kv : localMaps[t]) {
+            freq[kv.first] += kv.second;
+        }
+    }
+    groups.clear();
+    groupOffsets.clear();
+    groupOffsets.push_back(0);
+    vector<pair<int,int>> keys;
+    keys.reserve(freq.size());
+    for (auto& kv : freq) keys.push_back(kv.first);
+    sort(keys.begin(), keys.end());
+    int pos = 0;
+    for (auto& k : keys) {
+        int d = freq[k];
+        groups.emplace_back(k, d);
+        pos += d;
+        groupOffsets.push_back(pos);
+    }
+}
+
+vector<pair<pair<int,int>, long long>>
+aggregateKeyValueSort(
+    vector<pair<pair<int,int>,int>>& pairs
+) {
+    sort(pairs.begin(), pairs.end(),
+         [](const pair<pair<int,int>,int>& a, const pair<pair<int,int>,int>& b) {
+             if (a.first.first != b.first.first) return a.first.first < b.first.first;
+             return a.first.second < b.first.second;
+         });
+    vector<pair<pair<int,int>, long long>> result;
+    result.reserve(pairs.size());
+    for (int i = 0, n = (int)pairs.size(); i < n; ) {
+        auto key = pairs[i].first;
+        long long sum = 0;
+        int j = i;
+        while (j < n && pairs[j].first == key) {
+            sum += pairs[j].second;
             ++j;
         }
-        int freq = j - i;
-        endpointWedgeFrequency.emplace_back(make_pair(u1, u2), freq);
-        uniqueWedgeIndexes.push_back(i);
+        result.emplace_back(key, sum);
         i = j;
+    }
+    return result;
+}
+
+vector<pair<pair<int,int>, long long>>
+aggregateKeyValueHash(
+    const vector<pair<pair<int,int>,int>>& pairs
+) {
+    int m = (int)pairs.size();
+    int T = 1; // omp_get_max_threads();
+    vector<unordered_map<pair<int,int>, long long, PairHash>> localMaps(T);
+    // #pragma omp parallel for schedule(dynamic)
+    for (int i = 0; i < m; ++i) {
+        int tid = 0; // omp_get_thread_num();
+        localMaps[tid][pairs[i].first] += pairs[i].second;
+    }
+    unordered_map<pair<int,int>, long long, PairHash> freq;
+    freq.reserve(m);
+    for (int t = 0; t < T; ++t) {
+        for (auto& kv : localMaps[t]) {
+            freq[kv.first] += kv.second;
+        }
+    }
+    vector<pair<pair<int,int>, long long>> result;
+    result.reserve(freq.size());
+    vector<pair<int,int>> keys;
+    keys.reserve(freq.size());
+    for (auto& kv : freq) keys.push_back(kv.first);
+    sort(keys.begin(), keys.end());
+    for (auto& k : keys) {
+        result.emplace_back(k, freq[k]);
+    }
+    return result;
+}
+
+vector<pair<pair<int,int>, long long>>
+aggregateKeyValueBatch(
+    const vector<pair<pair<int,int>,int>>& pairs
+) {
+    int m = (int)pairs.size();
+    const int B = 1024;
+    int T = 1; // omp_get_max_threads();
+    vector<unordered_map<pair<int,int>, long long, PairHash>> localMaps(T);
+    // #pragma omp parallel
+    {
+        int tid = 0; // omp_get_thread_num();
+        auto& myMap = localMaps[tid];
+        // #pragma omp for schedule(dynamic)
+        for (int s = 0; s < m; s += B) {
+            int e = min(m, s + B);
+            for (int i = s; i < e; ++i) {
+                myMap[pairs[i].first] += pairs[i].second;
+            }
+        }
+    }
+    unordered_map<pair<int,int>, long long, PairHash> freq;
+    freq.reserve(m);
+    for (int t = 0; t < T; ++t) {
+        for (auto& kv : localMaps[t]) {
+            freq[kv.first] += kv.second;
+        }
+    }
+    vector<pair<pair<int,int>, long long>> result;
+    result.reserve(freq.size());
+    vector<pair<int,int>> keys;
+    keys.reserve(freq.size());
+    for (auto& kv : freq) keys.push_back(kv.first);
+    sort(keys.begin(), keys.end());
+    for (auto& k : keys) {
+        result.emplace_back(k, freq[k]);
+    }
+    return result;
+}
+
+void updateV(
+    const vector<vector<int>>& neighbors,
+    const vector<int>&         ranks,
+    vector<long long>&         B,
+    const vector<int>&         peelSet,
+    const string&              peelType,
+    vector<Wedge>&             wedgeBuffer
+) {
+    wedgeBuffer.clear();
+
+    // #pragma omp parallel
+    {
+        vector<Wedge> localWedges;
+        // #pragma omp for schedule(dynamic)
+        for (int idx = 0; idx < (int)peelSet.size(); ++idx) {
+            int u1 = peelSet[idx];
+            for (int v : neighbors[u1]) {
+                for (int u2 : neighbors[v]) {
+                    if (u2 == u1) continue;
+                    if (ranks[v] > ranks[u1] && ranks[u2] > ranks[u1]) {
+                        localWedges.push_back({u1, u2, v});
+                    }
+                }
+            }
+        }
+        // #pragma omp critical
+        wedgeBuffer.insert(wedgeBuffer.end(), localWedges.begin(), localWedges.end());
+    }
+
+    vector<pair<pair<int,int>,int>> wedgeGroups;
+    vector<int> groupOffsets;
+    if      (peelType == "SORT")  aggregateWedgesSort(wedgeBuffer, wedgeGroups, groupOffsets);
+    else if (peelType == "HASH")  aggregateWedgesHash(wedgeBuffer, wedgeGroups, groupOffsets);
+    else if (peelType == "BATCH") aggregateWedgesBatch(wedgeBuffer, wedgeGroups, groupOffsets);
+
+    // #pragma omp parallel for schedule(dynamic)
+    for (int i = 0; i < (int)wedgeGroups.size(); ++i) {
+        int u1 = wedgeGroups[i].first.first;
+        int u2 = wedgeGroups[i].first.second;
+        int freq = wedgeGroups[i].second;
+        long long butterflyCount = (long long)freq * (freq - 1) / 2;
+        // #pragma omp atomic
+        B[u1] -= butterflyCount;
+        // #pragma omp atomic
+        B[u2] -= butterflyCount;
+        for (int j = groupOffsets[i]; j < groupOffsets[i+1]; ++j) {
+            int v = wedgeBuffer[j].center;
+            // #pragma omp atomic
+            B[v] -= (freq - 1);
+        }
+    }
+}
+
+void peelV(
+    int                         v1,
+    const vector<vector<int>>&  neighbors,
+    const vector<int>&          ranks,
+    vector<long long>&          B,
+    const string&               peelType
+) {
+    long long maxButterflies = 0;
+    for (int u = 0; u < v1; ++u)
+        maxButterflies = max(maxButterflies, B[u]);
+    Bucket K(v1, (int)maxButterflies, true);
+
+    vector<int> initialScores(v1);
+    for (int u = 0; u < v1; ++u) initialScores[u] = (int)B[u];
+    K.initialize(initialScores);
+
+    vector<char> peeled(v1, 0);
+    vector<int>  peelSet;
+    vector<Wedge> wedgeBuffer;
+    int numPeeled = 0;
+
+    while (numPeeled < v1) {
+        peelSet.clear();
+        int u;
+        while ((u = K.pop()) != -1) {
+            if (!peeled[u]) {
+                peeled[u] = 1;
+                peelSet.push_back(u);
+            }
+        }
+        numPeeled += (int)peelSet.size();
+
+        updateV(neighbors, ranks, B, peelSet, peelType, wedgeBuffer);
+
+        // #pragma omp parallel for schedule(dynamic)
+        for (int idx = 0; idx < (int)peelSet.size(); ++idx) {
+            int u1 = peelSet[idx];
+            for (int v : neighbors[u1]) {
+                for (int u2 : neighbors[v]) {
+                    if (u2 < v1 && !peeled[u2]) {
+                        long long newScore = B[u2];
+                        long long oldScore = K.getScore(u2);
+                        int delta = (int)(newScore - oldScore);
+                        while (delta > 0) { K.update(u2, +1); --delta; }
+                        while (delta < 0) { K.update(u2, -1); ++delta; }
+                    }
+                }
+            }
+        }
+    }
+}
+
+void updateE(
+    const vector<vector<int>>&  neighbors,
+    const vector<pair<int,int>>& edgesList,
+    const unordered_map<pair<int,int>,int,PairHash>& edgeIdOf,
+    const vector<vector<int>>&  incidentEdges,
+    vector<long long>&          B_edge,
+    const vector<int>&          peelEdges,
+    const string&               peelType,
+    vector<pair<pair<int,int>,int>>& contribBuf
+) {
+    contribBuf.clear();
+
+    // #pragma omp parallel
+    {
+        vector<pair<pair<int,int>,int>> local;
+        // #pragma omp for schedule(dynamic)
+        for (int idx = 0; idx < (int)peelEdges.size(); ++idx) {
+            int eid = peelEdges[idx];
+            int u1 = edgesList[eid].first;
+            int v1 = edgesList[eid].second;
+
+            for (int u2 : neighbors[v1]) {
+                if (u2 == u1) continue;
+
+                const auto& Nu1 = neighbors[u1];
+                const auto& Nu2 = neighbors[u2];
+                vector<int> N;
+                int i = 0, j = 0;
+                while (i < (int)Nu1.size() && j < (int)Nu2.size()) {
+                    if      (Nu1[i] < Nu2[j]) ++i;
+                    else if (Nu1[i] > Nu2[j]) ++j;
+                    else {
+                        N.push_back(Nu1[i]);
+                        ++i; ++j;
+                    }
+                }
+
+                int eid2 = edgeIdOf.at({u2, v1});
+                local.emplace_back(make_pair(eid2, 1), (int)N.size() - 1);
+
+                for (int v2 : N) {
+                    if (v2 == v1) continue;
+                    int eA = edgeIdOf.at({u1, v2});
+                    local.emplace_back(make_pair(eA, 1), 1);
+                    int eB = edgeIdOf.at({u2, v2});
+                    local.emplace_back(make_pair(eB, 1), 1);
+                }
+            }
+        }
+        // #pragma omp critical
+        contribBuf.insert(contribBuf.end(), local.begin(), local.end());
+    }
+
+    vector<pair<pair<int,int>, long long>> R;
+    if      (peelType == "SORT") R = aggregateKeyValueSort(contribBuf);
+    else if (peelType == "HASH") R = aggregateKeyValueHash(contribBuf);
+    else                        R = aggregateKeyValueBatch(contribBuf);
+
+    // #pragma omp parallel for schedule(dynamic)
+    for (int i = 0; i < (int)R.size(); ++i) {
+        int eid = R[i].first.first;
+        int delta = R[i].second;
+        // #pragma omp atomic
+        B_edge[eid] -= delta;
+    }
+}
+
+void peelE(
+    int                                 totalEdges,
+    const vector<vector<int>>&          neighbors,
+    const vector<pair<int,int>>&        edgesList,
+    const unordered_map<pair<int,int>,int,PairHash>& edgeIdOf,
+    const vector<vector<int>>&          incidentEdges,
+    vector<long long>&                  B_edge,
+    const string&                       peelType
+) {
+    long long maxB = 0;
+    for (int i = 0; i < totalEdges; ++i) {
+        if (B_edge[i] > maxB) maxB = B_edge[i];
+    }
+    Bucket K(totalEdges, (int)maxB, /*extractMin=*/true);
+
+    vector<int> initScores(totalEdges);
+    for (int e = 0; e < totalEdges; ++e) {
+        initScores[e] = (int)B_edge[e];
+    }
+    K.initialize(initScores);
+
+    vector<char> peeled(totalEdges, 0);
+    vector<int>  peelSet;
+    vector<pair<pair<int,int>,int>> contribBuf;
+    int peeledCount = 0;
+
+    while (peeledCount < totalEdges) {
+        peelSet.clear();
+        int e;
+        while ((e = K.pop()) != -1) {
+            if (!peeled[e]) {
+                peeled[e] = 1;
+                peelSet.push_back(e);
+            }
+        }
+        peeledCount += (int)peelSet.size();
+
+        updateE(neighbors, edgesList, edgeIdOf, incidentEdges,
+                B_edge, peelSet, peelType, contribBuf);
+
+        // #pragma omp parallel for schedule(dynamic)
+        for (int idx = 0; idx < (int)peelSet.size(); ++idx) {
+            int e1 = peelSet[idx];
+            int u1 = edgesList[e1].first;
+            int v1 = edgesList[e1].second;
+            for (int s = 0; s < 2; ++s) {
+                int side = (s == 0) ? u1 : v1;
+                for (int j = 0; j < incidentEdges[side].size(); ++j) {
+                    int e2 = incidentEdges[side][j];
+                    if (!peeled[e2]) {
+                        long long newS = B_edge[e2];
+                        long long oldS = K.getScore(e2);
+                        int delta = (int)(newS - oldS);
+                        while (delta > 0) { K.update(e2, +1); --delta; }
+                        while (delta < 0) { K.update(e2, -1); ++delta; }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -283,20 +689,20 @@ int main(int argc, char** argv) {
       "-d <int> "
       "<input-file>"
     );
-    string countType   = cmd.getOptionValue("-countType",   "SORT");
-    string rankType    = cmd.getOptionValue("-rankType",    "DEG");
+    string countType   = cmd.getOptionValue("-countType",   "BATCH");
+    string rankType    = cmd.getOptionValue("-rankType",    "ADEG");
     string peelType    = cmd.getOptionValue("-peelType",    "NONE");
     string perType     = cmd.getOptionValue("-per",         "VERT");
     string sparseType  = cmd.getOptionValue("-sparseType",  "NONE");
-    int    d           = cmd.getOptionIntValue("-d", 25);
+    int    d           = cmd.getOptionIntValue("-d", 5);
     char*  filename    = cmd.getArgument(0);
 
     bool ok =
-        (countType  == "SORT")
+       (countType  == "SORT" || countType == "HASH" || countType == "BATCH")
     && (rankType   == "DEG"  || rankType == "SIDE" || rankType == "ADEG")
-    && (peelType   == "NONE")
-    && (perType    == "VERT")
-    && (sparseType == "NONE");
+    && (peelType   == "NONE" || peelType == "SORT" || peelType == "BATCH" || peelType == "HASH")
+    && (perType    == "VERT" || perType == "EDGE")
+    && (sparseType == "NONE" || sparseType == "COLOR" || sparseType == "EDGE");
     if (!ok) cmd.badArgument();
 
     timer startTime;
@@ -305,18 +711,11 @@ int main(int argc, char** argv) {
     t1.start();
 
     std::ifstream file(filename);
-    // Line is first index of file
     std::string line;
 
     std::vector<int> offsetsV, edgesV;
     std::vector<int> offsetsU, edgesU;
 
-    // Iterate over first 5 linse of the input, containing "AdjacencyHypergraph",
-    // nv, mv, nu, mu
-    // v1 = Number of Vertices for bipartition V,
-    // e1 = Number of Edges for bipartition V,
-    // v2 = Number of Vertices for bipartition U,
-    // e2 = Number of Edges for bipartition U
     int v1,e1,v2,e2;
     getline(file, line);
     if (line != "AdjacencyHypergraph") {
@@ -358,33 +757,91 @@ int main(int argc, char** argv) {
     t1.stop();
     t1.reportTotal("file_reading");
 
-    t1.start();
-
     int totalVertices = v1 + v2;
-    vector<vector<int>> neighbors(totalVertices);
-    // All neighbros are given by the edges from a node in V to a node in U
-    for (int i = 0; i < v1; ++i) {
-        int start = offsetsV[i];
-        int end   = (i + 1 < v1 ? offsetsV[i + 1] : e1);
-        for (int j = start; j < end; ++j) {
-            int edgeId = edgesV[j];      // V's neighbor in U
-            neighbors[i].push_back(v1 + edgeId);
-            neighbors[v1 + edgeId].push_back(i); // Since the graph is undirected, edges go both ways
+
+    vector<pair<int,int>> edgesList;
+    edgesList.reserve(e1 + e2);
+    for (int u = 0; u < v1; ++u) {
+      int start = offsetsV[u], end = (u+1<v1 ? offsetsV[u+1] : e1);
+      for (int j = start; j < end; ++j) {
+        int w = v1 + edgesV[j];
+        edgesList.emplace_back(u, w);
+      }
+    }
+
+    size_t oldE = edgesList.size();
+    std::sort(edgesList.begin(), edgesList.end());
+    edgesList.erase(
+        std::unique(edgesList.begin(), edgesList.end()),
+        edgesList.end()
+    );
+    size_t newE = edgesList.size();
+    if (newE < oldE) {
+        std::cerr << "Warning: removed "
+                << (oldE - newE)
+                << " duplicate edges\n";
+    }
+
+    double scaleFactor = 1.0;
+    if (sparseType == "EDGE") {
+        double p = 1.0 / d;
+        scaleFactor = 1.0 / pow(p, 4);
+        srand(time(NULL));
+        vector<pair<int, int>> filtered;
+        filtered.reserve(edgesList.size());
+        for (auto& e : edgesList) {
+            double r = (double)rand() / RAND_MAX;
+            if (r < p)
+                filtered.push_back(e);
         }
+        edgesList.swap(filtered);
+    }
+    else if (sparseType == "COLOR") {
+        scaleFactor = pow(d, 3);
+        srand((unsigned)time(NULL));
+        vector<int> color(totalVertices);
+        for (int u = 0; u < totalVertices; ++u)
+            color[u] = rand() % d;
+        vector<pair<int,int>> filtered;
+        filtered.reserve(edgesList.size());
+        for (auto &e : edgesList) {
+            if (color[e.first] == color[e.second])
+                filtered.push_back(e);
+        }
+        edgesList.swap(filtered);
+    } else {
+        scaleFactor = 1.0;
+    }
+
+    vector<vector<int>> neighbors(totalVertices);
+    t1.start();
+    for (auto& N : neighbors) N.clear();
+    for (auto& e : edgesList) {
+        int u = e.first, v = e.second;
+        neighbors[u].push_back(v);
+        neighbors[v].push_back(u);
     }
     t1.stop();
     t1.reportTotal("Constructing neighbors");
 
-    /*
-        STEP 1: COMPUTE VERTEX RANK -- USING DEGREE ORDER
-    */
+    unordered_map<pair<int,int>,int,PairHash> edgeIdOf;
+    edgeIdOf.reserve(edgesList.size());
+    vector<vector<int>> incidentEdges(totalVertices);
+    for (int eid = 0; eid < (int)edgesList.size(); ++eid) {
+      auto [u,v] = edgesList[eid];
+      edgeIdOf[{u,v}] = eid;
+      edgeIdOf[{v,u}] = eid;
+      incidentEdges[u].push_back(eid);
+      incidentEdges[v].push_back(eid);
+    }
+
     t1.start();
     vector<int> degrees(totalVertices), sortedVertices(totalVertices), ranks(totalVertices);
     vector<vector<int>> modifiedNeighbors(totalVertices);
 
     if (rankType == "DEG") {
         computeDegreeOrder(neighbors, degrees, sortedVertices, ranks, modifiedNeighbors);
-        }
+    }
     else if (rankType == "SIDE") {
         computeSideOrder(v1, v2, offsetsV, e1, offsetsU, e2, neighbors, ranks, modifiedNeighbors);
     }
@@ -396,20 +853,7 @@ int main(int argc, char** argv) {
     }
     t1.stop();
     t1.reportTotal("Sorting and modified neighborhood shenanigans");
-    /*
-        We define a modified degree,
-        degv (u), to be the number of neighbors u′ ∈ N (u) such that
-        rank(u′) > rank(v)
 
-        NOTE: MODIFIED DEGREE is simply modifiedNeighbors[index].size()
-    */
-
-    /*
-        STEP 2: WEDGE RETRIEVAL / ENUMERATION
-    */
-    // Build modifiedNeighbors based on ranks
-    // 2: Use PREFIX-SUM to compute a function I that maps wedges to indices in order
-    // Build immediateNeighbors: exclusive prefix‐sum of modified‐degrees
     t1.start();
     vector<int> immediateNeighbors(totalVertices + 1);
     immediateNeighbors[0] = 0;
@@ -419,14 +863,12 @@ int main(int argc, char** argv) {
     }
     int M = immediateNeighbors[totalVertices];
 
-    // 2) For each (u1, v), we calculate how many possible u2's it results in, i.e how many neighbors of v that have a rank
-    // greater than v
     vector<int> secondNeighbors(M);
+    // #pragma omp parallel for schedule(dynamic)
     for (int u1 = 0; u1 < totalVertices; ++u1) {
         int modDeg = (int)modifiedNeighbors[u1].size();
         for (int i = 0; i < modDeg; ++i) {
             int v = modifiedNeighbors[u1][i];
-            // count *all* neighbors of v except the back‐edge to u1
             int cnt2 = 0;
             for (int w : neighbors[v]) {
                 if (ranks[w] > ranks[u1]) {
@@ -437,7 +879,6 @@ int main(int argc, char** argv) {
         }
     }
 
-    // 3) Calculate exclusive prefix‐sum of 2nd modified degrees (neighbors of neighbors of u in )
     vector<size_t> secondNeighborsPrefixSum(M + 1);
     secondNeighborsPrefixSum[0] = 0;
     for (int k = 0; k < M; ++k) {
@@ -449,43 +890,21 @@ int main(int argc, char** argv) {
 
     t1.start();
     int totalWedges = (int)secondNeighborsPrefixSum[M];
-    // 3: Initialize W to be an array of wedges
     vector<Wedge> W(totalWedges);
     t1.stop();
     t1.reportTotal("Initialising Wedge array");
 
     t1.start();
-    //4: parfor u ∈ [0..n):
-
-    /* Debugging I did to check if different rankTypes were effecting the creation
-    of modifiedNeighbors
-    cout << "\nOUTPUTTING MODIFIED NEIGHBORS SIZE: " << modifiedNeighbors.size();
-    int sum = 0;
-    for (int i = 0; i < modifiedNeighbors.size(); ++i) {
-        sum += modifiedNeighbors[i].size();
-    }
-    cout << "\nTOTAL NEIGHBORS IN EACH MODIFIED NEIGHBOR: " << sum << '\n';
-    */
-   
     // #pragma omp parallel for schedule(dynamic)
     for (int u1 = 0; u1 < totalVertices; ++u1) {
         int modDeg = modifiedNeighbors[u1].size();
-        // 5: parfor i ← 0 to degu1 (u1) do
         for (int i = 0; i < modDeg; ++i) {
-            // We don't need to check rank(v) > rank(u1) because modifiedNeighbors only stores
-            // neighbors that are greater rank than the vertex.
-            // 6: v ← N (u1)[i] . v = ith neighbor of u1
             int v = modifiedNeighbors[u1][i];
             int base = (int)secondNeighborsPrefixSum[
                           immediateNeighbors[u1] + i];
             int cnt = 0;
-            // 7: parfor j ← 0 to degu1 (v) do
-            // 8: u2 ← N (v)[j] . u2 = jth neighbor of v (u2 is w)
             for (int w : neighbors[v]) {
                 if (ranks[w] > ranks[u1])
-                    // 9: W [I(i, j)] ← ((u1, u2), 1, v) . (u1, u2) are the endpoints, v is the center of the wedge
-                    // u1 and w (u2) are endpoints, v is the center. hence rank(v) > rank(u1)
-                    // and rank(w) > rank(u1).
                     W[base + cnt++] = {u1, w, v};
             }
         }
@@ -493,87 +912,150 @@ int main(int argc, char** argv) {
     t1.stop();
     t1.reportTotal("Wedge retrieval");
 
-    // ------------- ALGORITHM 3: COUNT-V-WEDGES(W) -------------------------
+    if (perType == "VERT") {
+        vector<pair<pair<int,int>,int>> R;
+        vector<int>                     F;
+        if      (countType == "SORT")  aggregateWedgesSort(W, R, F);
+        else if (countType == "HASH")  aggregateWedgesHash(W, R, F);
+        else if (countType == "BATCH") aggregateWedgesBatch(W, R, F);
+        else cmd.badArgument();
 
-    /* Parallel sorting (semisort): Collect all wedges into a sequence of key-value pairs with
-    key (v, w), then use a parallel sort. Equal keys become contiguous, and each group of size f
-    implies (fC2) butterflies.
+        vector<long long> B(totalVertices, 0LL);
+        long long         totalButterflies = 0;
 
-    NOTE: USE BATCHING FOR PARALLELISM, Partition vertices into fixed-size batches. Each thread takes a batch of
-    vertices, enumerates all wedges incident to them, and serially tallies them in a local array or
-    map.
-
-    THIS ACHIEVES BETTER PERFORMANCE. SORTING IS O(N log N), THE SLOWEST METHOD FOR WEDGE
-    AGGREGATION.
-    */
-    t1.start();
-    // PARALLELIZE LATER -- MAKE QUICKSORT
-    sort(W.begin(), W.end(), [](auto &a, auto &b){
-        if (a.endpoint1 != b.endpoint1) return a.endpoint1 < b.endpoint1;
-        return a.endpoint2 < b.endpoint2;
-    });
-    t1.stop();
-    t1.reportTotal("Sorting wedges for aggregation");
-
-    t1.start();
-    vector<pair<pair<int, int>, int>> endpointWedgeFrequency;
-    vector<int> uniqueWedgeIndexes;
-    aggregateWedgesSorting(W,
-                           endpointWedgeFrequency,
-                           uniqueWedgeIndexes);
-    t1.stop();
-    t1.reportTotal("R, F ← GET-FREQ(W)");
-
-    t1.start();
-    vector<long long> butterfliesPerVertex(totalVertices, 0LL);
-    long long totalButterflies = 0LL;
-
-    // #pragma omp parallel for schedule(dynamic)
-    for (int i = 0; i < (int)uniqueWedgeIndexes.size(); ++i) {
-        /*
-            4: parfor i ← 0 to |F | − 1 do
-            5: ((u1, u2), d) ← R[i] . u1 and u2 are the wedge endpoints
-            6: Store (u1, (dC2)) and (u2, (dC2)) in B. Store butterfly counts per endpoint
-        */
-        auto freqPair = endpointWedgeFrequency[i];
-        int u1   = freqPair.first.first;
-        int u2   = freqPair.first.second;
-        int freq = freqPair.second;
-
-        // Taking a simple combination instead of adding every single wedge on the same
-        // incident endpoints individually.
-        long long butterfliesForEndpoints = (long long)freq * (freq - 1) / 2;
-
-        // #pragma omp atomic
-        butterfliesPerVertex[u1] += butterfliesForEndpoints;
-        // #pragma omp atomic
-        butterfliesPerVertex[u2] += butterfliesForEndpoints;
-        // #pragma omp atomic
-        totalButterflies += butterfliesForEndpoints;
-        /*
-            7: parfor j ← F [i] to F [i + 1] do
-            8: ( , , v) ← W [j] . v is the wedge center
-            9: Store (v, d − 1) in B
-        */
-        int start = uniqueWedgeIndexes[i];
-        int end   = (i + 1 < (int)uniqueWedgeIndexes.size()
-                     ? uniqueWedgeIndexes[i+1]
-                     : (int)W.size());
-        for (int j = start; j < end; ++j) {
-            int v = W[j].center;
-            // Do not need to add this to total butterfly count as that's already included by the
-            // vertex counts
-            butterfliesPerVertex[v] += (freq - 1);
+        // #pragma omp parallel for reduction(+ : totalButterflies)
+        for (int i = 0; i < (int)R.size(); ++i) {
+            int u1 = R[i].first.first;
+            int u2 = R[i].first.second;
+            int d  = R[i].second;
+            long long c = (long long)d * (d - 1) / 2;
+            // #pragma omp atomic
+            B[u1] += c;
+            // #pragma omp atomic
+            B[u2] += c;
+            totalButterflies += c;
         }
-    }
-    t1.stop();
-    t1.reportTotal("Calculating total number of butterflies");
 
-    startTime.stop();
-    startTime.reportTotal("Total running time");
-    cout << "Total number of butterflies = "
-         << totalButterflies << "\n";
-    // End of COUNT-V-WEDGES
+        // #pragma omp parallel for
+        for (int i = 0; i < (int)R.size(); ++i) {
+            int start = F[i], end = F[i+1];
+            int d     = R[i].second;
+            long long c = d - 1;
+            for (int j = start; j < end; ++j) {
+                int v = W[j].center;
+                // #pragma omp atomic
+                B[v] += c;
+            }
+        }
+        t1.stop();
+        t1.reportTotal("Calculating per‐vertex butterfly counts");
+        cout << "Total number of butterflies = " << (long long)(totalButterflies * scaleFactor) << "\n";
+
+        if (peelType != "NONE") {
+            t1.start();
+            peelV(v1, neighbors, ranks, B, peelType);
+            t1.stop();
+            t1.reportTotal("Time To Peel");
+        }
+
+        startTime.stop();
+        startTime.reportTotal("Total time to run");
+    }
+    else if (perType == "EDGE") {
+        vector<pair<pair<int,int>,int>> R;
+        vector<int>                     F;
+        if      (countType == "SORT")  aggregateWedgesSort(W, R, F);
+        else if (countType == "HASH")  aggregateWedgesHash(W, R, F);
+        else if (countType == "BATCH") aggregateWedgesBatch(W, R, F);
+        else cmd.badArgument();
+
+        int T = 1; // omp_get_max_threads();
+        vector<vector<pair<pair<int,int>,int>>> local_B_contribs(T);
+
+        size_t totalContribs = 0;
+        for (int i = 0; i < (int)R.size(); ++i) {
+            totalContribs += 2 * (F[i+1] - F[i]);
+        }
+
+        for (int t = 0; t < T; ++t) {
+            local_B_contribs[t].reserve(totalContribs / T + 1);
+        }
+
+        // #pragma omp parallel
+        {
+            int tid = 0; // omp_get_thread_num();
+            auto& my_contribs = local_B_contribs[tid];
+
+            // #pragma omp for schedule(dynamic)
+            for (int i = 0; i < (int)R.size(); ++i) {
+                int u1    = R[i].first.first;
+                int u2    = R[i].first.second;
+                int d     = R[i].second;
+                int start = F[i], end = F[i+1];
+                int val   = d - 1;
+                for (int j = start; j < end; ++j) {
+                    int v = W[j].center;
+                    my_contribs.emplace_back(make_pair(u1, v), val);
+                    my_contribs.emplace_back(make_pair(u2, v), val);
+                }
+            }
+        }
+
+        vector<pair<pair<int,int>,int>> B_contribs;
+        B_contribs.reserve(totalContribs);
+        for (int t = 0; t < T; ++t) {
+            B_contribs.insert(B_contribs.end(),
+                            local_B_contribs[t].begin(),
+                            local_B_contribs[t].end());
+        }
+
+        vector<pair<pair<int,int>, long long>> edgeCounts;
+        if      (countType == "SORT")  edgeCounts = aggregateKeyValueSort(B_contribs);
+        else if (countType == "HASH")  edgeCounts = aggregateKeyValueHash(B_contribs);
+        else if (countType == "BATCH") edgeCounts = aggregateKeyValueBatch(B_contribs);
+
+        long long totalButterflies = 0;
+        for (auto &ec : edgeCounts) {
+            totalButterflies += ec.second;
+        }
+        cout << "Total number of butterflies = " << (long long)((totalButterflies / 4) * scaleFactor) << "\n";
+
+        if (peelType != "NONE") {
+            t1.start();
+
+            vector<long long> B_edge(edgesList.size(), 0);
+            for (const auto& ec : edgeCounts) {
+                int eid;
+                auto it = edgeIdOf.find(ec.first);
+                if (it != edgeIdOf.end()) {
+                    eid = it->second;
+                }
+                else {
+                    auto it2 = edgeIdOf.find({ec.first.second, ec.first.first});
+                    if (it2 != edgeIdOf.end())
+                        eid = it2->second;
+                    else continue;
+                }
+                B_edge[eid] = ec.second;
+            }
+
+            peelE(
+                (int)edgesList.size(),
+                neighbors,
+                edgesList,
+                edgeIdOf,
+                incidentEdges,
+                B_edge,
+                peelType
+            );
+
+            t1.stop();
+            t1.reportTotal("Time To Peel Edges");
+        }
+
+        startTime.stop();
+        startTime.reportTotal("Total time to run");
+    }
 
     return 0;
 }
