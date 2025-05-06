@@ -14,6 +14,9 @@
 
 using namespace std;
 
+// Define number of threads globally
+int numThreads = 12;
+
 template<typename T>
 void printOffsetsAndEdges(std::vector<T> off1,
                           std::vector<T> edge1,
@@ -110,7 +113,7 @@ void computeDegreeOrder(
         ranks[sortedVertices[i]] = i;
     }
     // Neighbors are sorted in descending order of rank
-    #pragma omp parallel for schedule(dynamic)
+    #pragma omp parallel for num_threads(numThreads) schedule(dynamic)
     for (int u = 0; u < n; ++u) {
         auto& N = neighbors[u];
         sort(N.begin(), N.end(),
@@ -120,7 +123,7 @@ void computeDegreeOrder(
     }
     // Modified neighbors has neighbors with rank[neighbor] > vertex,
     // all of a vertex's neighbors will have a rank greater than it 
-    #pragma omp parallel for schedule(dynamic)
+    #pragma omp parallel for num_threads(numThreads) schedule(dynamic)
     for (int u = 0; u < n; ++u) {
         auto& M = modifiedNeighbors[u];
         M.clear();
@@ -161,7 +164,7 @@ void computeApproxDegreeOrder(
         ranks[sortedVertices[i]] = i;
     }
     // Neighbors are sorted in descending order of rank
-    #pragma omp parallel for schedule(dynamic)
+    #pragma omp parallel for num_threads(numThreads) schedule(dynamic)
     for (int u = 0; u < n; ++u) {
         auto& N = neighbors[u];
         sort(N.begin(), N.end(),
@@ -171,7 +174,7 @@ void computeApproxDegreeOrder(
     }
     // Modified neighbors has neighbors with rank[neighbor] > vertex,
     // all of a vertex's neighbors will have a rank greater than it 
-    #pragma omp parallel for schedule(dynamic)
+    #pragma omp parallel for num_threads(numThreads) schedule(dynamic)
     for (int u = 0; u < n; ++u) {
         auto& M = modifiedNeighbors[u];
         M.clear();
@@ -229,7 +232,7 @@ void computeSideOrder(
     }
 
     // Neighbors are sorted in descending order 1of rank
-    #pragma omp parallel for schedule(dynamic)
+    #pragma omp parallel for num_threads(numThreads) schedule(dynamic)
     for (int u = 0; u < n; ++u) {
         auto& N = neighbors[u];
         sort(N.begin(), N.end(),
@@ -240,7 +243,7 @@ void computeSideOrder(
     // Modified neighbors has neighbors with rank[neighbor] > vertex,
     // all of a vertex's neighbors will have a rank greater than it 
     modifiedNeighbors.resize(n);
-    #pragma omp parallel for schedule(dynamic)
+    #pragma omp parallel for num_threads(numThreads) schedule(dynamic)
     for (int u = 0; u < n; ++u) {
         auto& M = modifiedNeighbors[u];
         M.clear();
@@ -296,9 +299,9 @@ void aggregateWedgesHash(
     vector<int>& groupOffsets
 ) {
     int m = (int)wedges.size();
-    int T = omp_get_max_threads();
+    int T = numThreads;
     vector<unordered_map<pair<int,int>, int, PairHash>> localMaps(T);
-    #pragma omp parallel
+    #pragma omp parallel num_threads(numThreads)
     {
         int tid = omp_get_thread_num();
         auto& myMap = localMaps[tid];
@@ -339,9 +342,9 @@ void aggregateWedgesBatch(
 ) {
     int m = (int)wedges.size();
     const int B = 1024;
-    int T = omp_get_max_threads();
+    int T = numThreads;
     vector<unordered_map<pair<int,int>, int, PairHash>> localMaps(T);
-    #pragma omp parallel
+    #pragma omp parallel num_threads(numThreads)
     {
         int tid = omp_get_thread_num();
         auto& myMap = localMaps[tid];
@@ -409,9 +412,9 @@ aggregateKeyValueHash(
     const vector<pair<pair<int,int>,int>>& pairs
 ) {
     int m = (int)pairs.size();
-    int T = omp_get_max_threads();
+    int T = numThreads;
     vector<unordered_map<pair<int,int>, long long, PairHash>> localMaps(T);
-    #pragma omp parallel for schedule(dynamic)
+    #pragma omp parallel for num_threads(numThreads) schedule(dynamic)
     for (int i = 0; i < m; ++i) {
         int tid = omp_get_thread_num();
         localMaps[tid][pairs[i].first] += pairs[i].second;
@@ -442,9 +445,9 @@ aggregateKeyValueBatch(
 ) {
     int m = (int)pairs.size();
     const int B = 1024;
-    int T = omp_get_max_threads();
+    int T = numThreads;
     vector<unordered_map<pair<int,int>, long long, PairHash>> localMaps(T);
-    #pragma omp parallel
+    #pragma omp parallel num_threads(numThreads)
     {
         int tid = omp_get_thread_num();
         auto& myMap = localMaps[tid];
@@ -487,7 +490,7 @@ void updateV(
     // (line 2) Clear wedge buffer for this round
     wedgeBuffer.clear();
 
-    #pragma omp parallel
+    #pragma omp parallel num_threads(numThreads)
     {
         vector<Wedge> localWedges;
         #pragma omp for schedule(dynamic)
@@ -522,7 +525,7 @@ void updateV(
     else if (peelType == "BATCH") aggregateWedgesBatch(wedgeBuffer, wedgeGroups, groupOffsets);
 
     // 8: Subtract corresponding counts B′ from B
-    #pragma omp parallel for schedule(dynamic)
+    #pragma omp parallel for num_threads(numThreads) schedule(dynamic)
     for (int i = 0; i < (int)wedgeGroups.size(); ++i) {
         int u1 = wedgeGroups[i].first.first;
         int u2 = wedgeGroups[i].first.second;
@@ -541,8 +544,6 @@ void updateV(
         }
     }
 }
-
-
 
 // Algorithm 5, lines 10–18: PEEL-V(G = (U, V, E), B)
 void peelV(
@@ -588,7 +589,7 @@ void peelV(
         updateV(neighbors, ranks, B, peelSet, peelType, wedgeBuffer);
 
         // 17: Update the buckets of changed vertices in B
-        #pragma omp parallel for schedule(dynamic)
+        #pragma omp parallel for num_threads(numThreads) schedule(dynamic)
         for (int idx = 0; idx < (int)peelSet.size(); ++idx) {
             int u1 = peelSet[idx];
             for (int v : neighbors[u1]) {
@@ -623,7 +624,7 @@ void updateE(
     contribBuf.clear();
 
     // (3) parfor (u1, v1) ∈ A do
-    #pragma omp parallel
+    #pragma omp parallel num_threads(numThreads)
     {
         vector<pair<pair<int,int>,int>> local;
         #pragma omp for schedule(dynamic)
@@ -678,7 +679,7 @@ void updateE(
     else                        R = aggregateKeyValueBatch(contribBuf);
 
     // (11) Subtract corresponding counts in B′′ from B
-    #pragma omp parallel for schedule(dynamic)
+    #pragma omp parallel for num_threads(numThreads) schedule(dynamic)
     for (int i = 0; i < (int)R.size(); ++i) {
         int eid = R[i].first.first;
         int delta = R[i].second;
@@ -749,7 +750,7 @@ void peelE(
                 B_edge, peelSet, peelType, contribBuf);
 
         // 20: Update the buckets of changed edges in B
-        #pragma omp parallel for schedule(dynamic)
+        #pragma omp parallel for num_threads(numThreads) schedule(dynamic)
         for (int idx = 0; idx < (int)peelSet.size(); ++idx) {
             int e1 = peelSet[idx];
             int u1 = edgesList[e1].first;
@@ -773,7 +774,6 @@ void peelE(
     // (21) return K (wing numbers are now in K.score)
 }
 
-
 int main(int argc, char** argv) {
     // parse command‐line
     commandLine cmd(argc, argv,
@@ -783,6 +783,7 @@ int main(int argc, char** argv) {
       "-per VERT "
       "-sparseType NONE "
       "-d <int> "
+      "-threads <int> "
       "<input-file>"
     );
     string countType   = cmd.getOptionValue("-countType",   "BATCH");
@@ -792,6 +793,11 @@ int main(int argc, char** argv) {
     string sparseType  = cmd.getOptionValue("-sparseType",  "NONE");
     int    d           = cmd.getOptionIntValue("-d", 5);
     char*  filename    = cmd.getArgument(0);
+    
+    // Set the number of threads from command line or use max available
+    numThreads = cmd.getOptionIntValue("-threads", omp_get_max_threads());
+    omp_set_num_threads(numThreads);
+    cout << "Using " << numThreads << " threads" << endl;
 
     bool ok =
        (countType  == "SORT" || countType == "HASH" || countType == "BATCH")
@@ -860,10 +866,8 @@ int main(int argc, char** argv) {
     t1.stop();
     t1.reportTotal("file_reading");
 
-
     int totalVertices = v1 + v2;
     
-
     vector<pair<int,int>> edgesList;
     edgesList.reserve(e1 + e2);
     // first, all edges from V‐side input
@@ -1000,7 +1004,7 @@ int main(int argc, char** argv) {
     // 2) For each (u1, v), we calculate how many possible u2's it results in, i.e how many neighbors of v that have a rank
     // greater than v
     vector<int> secondNeighbors(M);
-    #pragma omp parallel for schedule(dynamic)
+    #pragma omp parallel for num_threads(numThreads) schedule(dynamic)
     for (int u1 = 0; u1 < totalVertices; ++u1) {
         int modDeg = (int)modifiedNeighbors[u1].size();
         for (int i = 0; i < modDeg; ++i) {
@@ -1045,7 +1049,7 @@ int main(int argc, char** argv) {
     }
     cout << "\nTOTAL NEIGHBORS IN EACH MODIFIED NEIGHBOR: " << sum << '\n';
     //*/
-    #pragma omp parallel for schedule(dynamic)
+    #pragma omp parallel for num_threads(numThreads) schedule(dynamic)
     for (int u1 = 0; u1 < totalVertices; ++u1) {
         int modDeg = modifiedNeighbors[u1].size();
         // 5: parfor i ← 0 to degu1 (u1) do
@@ -1101,7 +1105,7 @@ int main(int argc, char** argv) {
         // 4: parfor i = 0 to |R|−1 do
         // 5:   ((u1, u2), d) ← R[i] . u1 and u2 are the wedge endpoint
         // 6:   Store (u1, (d choose 2)) and (u2, (d choose 2)) in B . Store butterfly counts per endpoint
-        #pragma omp parallel for reduction(+ : totalButterflies)
+        #pragma omp parallel for num_threads(numThreads) reduction(+ : totalButterflies)
         for (int i = 0; i < (int)R.size(); ++i) {
             int u1 = R[i].first.first;
             int u2 = R[i].first.second;
@@ -1115,7 +1119,7 @@ int main(int argc, char** argv) {
         }
     
     
-        #pragma omp parallel for
+        #pragma omp parallel for num_threads(numThreads)
         for (int i = 0; i < (int)R.size(); ++i) {
             int start = F[i], end = F[i+1];
             int d     = R[i].second;
@@ -1155,7 +1159,7 @@ int main(int argc, char** argv) {
         else if (countType == "BATCH") aggregateWedgesBatch(W, R, F);
         else cmd.badArgument();
     
-        int T = omp_get_max_threads();
+        int T = numThreads;
         vector<vector<pair<pair<int,int>,int>>> local_B_contribs(T);
     
         size_t totalContribs = 0;
@@ -1172,7 +1176,7 @@ int main(int argc, char** argv) {
         // 5:  ((u1, u2), d) ← R[i]
         // 6:   for j = F[i] to F[i+1]−1:
         // 7:     (u1,u2, v) ← W[j], store ((u1,v),(d−1)) and ((u2,v),(d−1))
-        #pragma omp parallel
+        #pragma omp parallel num_threads(numThreads)
         {
             int tid = omp_get_thread_num();
             auto& my_contribs = local_B_contribs[tid];
@@ -1257,6 +1261,6 @@ int main(int argc, char** argv) {
         startTime.reportTotal("Total time to run");
     }
     
-
     return 0;
 }
+

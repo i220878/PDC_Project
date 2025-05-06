@@ -1,5 +1,5 @@
 CXX             = g++
-CXXFLAGS_PAR    = -std=c++17 -O3 -march=native -fopenmp
+CXXFLAGS_PAR    = -std=c++17 -O3 -fopenmp
 PAR_SRCS        = ParallelBipartiteButterflies.cpp
 PAR_TARGET      = ParallelBipartiteButterflies
 
