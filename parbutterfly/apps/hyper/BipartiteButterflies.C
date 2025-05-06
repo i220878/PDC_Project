@@ -281,6 +281,8 @@ void Compute(bipartiteCSR& GA, commandLine P) {
  *  multiple rounds
  */
 int parallel_main(int argc, char* argv[]) {
+  timer startTime;
+  startTime.start();
   commandLine P(argc,argv," <inFile>");
   char* iFile = P.getArgument(0);
   long rounds = P.getOptionLongValue("-r", 3);
@@ -352,5 +354,7 @@ int parallel_main(int argc, char* argv[]) {
       G.del();
     }*/
   //}
+
+  startTime.reportTotal("Total Time");
 }
 
