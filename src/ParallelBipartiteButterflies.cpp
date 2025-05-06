@@ -875,6 +875,20 @@ int main(int argc, char** argv) {
       }
     }
 
+    // Removing duplicates
+    size_t oldE = edgesList.size();
+    std::sort(edgesList.begin(), edgesList.end());
+    edgesList.erase(
+        std::unique(edgesList.begin(), edgesList.end()),
+        edgesList.end()
+    );
+    size_t newE = edgesList.size();
+    if (newE < oldE) {
+        std::cerr << "Warning: removed "
+                << (oldE - newE)
+                << " duplicate edges\n";
+    }
+
     double scaleFactor = 1.0;
     if (sparseType == "EDGE") {
         // 1) EDGE sparsification: keep each edge with probability p = 1/d
@@ -1119,7 +1133,7 @@ int main(int argc, char** argv) {
     
         t1.stop();
         t1.reportTotal("Calculating per‐vertex butterfly counts");
-        cout << "Total number of butterflies = " << (int)(totalButterflies * scaleFactor) << "\n";
+        cout << "Total number of butterflies = " << (long long)(totalButterflies * scaleFactor) << "\n";
         
         if (peelType != "NONE") {
             t1.start();
@@ -1199,7 +1213,7 @@ int main(int argc, char** argv) {
             totalButterflies += ec.second;
         }
         //*/
-        cout << "Total number of butterflies = " << (int)((totalButterflies / 4) * scaleFactor) << "\n";
+        cout << "Total number of butterflies = " << (long long)((totalButterflies / 4) * scaleFactor) << "\n";
 
         if (peelType != "NONE") {
             t1.start();
