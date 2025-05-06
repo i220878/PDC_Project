@@ -1,9 +1,9 @@
 CXX             = g++
-CXXFLAGS_PAR    = -std=c++14 -O3 -march=native -fopenmp
+CXXFLAGS_PAR    = -std=c++17 -O3 -march=native -fopenmp
 PAR_SRCS        = ParallelBipartiteButterflies.cpp
 PAR_TARGET      = ParallelBipartiteButterflies
 
-CXXFLAGS_SEQ    = -std=c++14
+CXXFLAGS_SEQ    = -std=c++17
 SEQ_SRCS        = SequentialBipartiteButterflies.cpp
 SEQ_TARGET      = SequentialBipartiteButterflies
 

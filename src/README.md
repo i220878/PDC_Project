@@ -1,4 +1,4 @@
-# Running
+# Implementation
 
 Currently, sequential and parallel implementations have been done:
 1. Degree-based Ranking
@@ -35,6 +35,22 @@ AdjacencyHypergraph
 &lt;edgeu(mv-1)>
 
 For more details, check the README.md in parbutterfly/
+
+# Running the code
+
+The following input format is expected to run the code (and is inspired by the paper):
+
+The application ParallelBipartiteButterflies takes a graph as input as shown in the previous section.
+It also takes parameters for counting and peeling, as follows:
+
+| Parameter    | Default     | Description                                      |
+| ---------    | -------     | ------------------------------------------------ |
+| `-countType` | BATCH       | (SORT, HASH, BATCH) Wedge/butterfly aggregation type for counting |
+| `-rankType`  | ADEG        | (SIDE, DEG, or ADEG) Vertex ordering . The prefix A means approximate.                |
+| `-peelType`  | NONE        | (SORT, HASH, BATCH, NONE) Butterfly aggregation type for peeling. NONE means don't execute peeling. |
+| `-per`       | VERT        | (VERT, EDGE) Denotes whether to count per vertex (VERT), or per edge (EDGE) |
+| `-sparseType`| NONE        | Sparsification options (EDGE, COLOR, NONE) |
+| `-d`         | 5           | If -sparseType is EDGE, then 1/d is the probability of keeping an edge. If -sparseType is COLOR, then d is the number of colors. |
 
 # NOTE
 The first 5 lines of the input file MUST be as shown above, with the first being "AdjacencyHypergraph",
