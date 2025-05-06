@@ -52,6 +52,8 @@ It also takes parameters for counting and peeling, as follows:
 | `-sparseType`| NONE        | Sparsification options (EDGE, COLOR, NONE) |
 | `-d`         | 5           | If -sparseType is EDGE, then 1/d is the probability of keeping an edge. If -sparseType is COLOR, then d is the number of colors. |
 
+You may choose to not provide any flags and the program will run as normal, simply provide the input file with the correct input format, i.e `❯ ./ParallelBipartiteButterflies ../input/pinterestSet.hyper`
+
 # NOTE
 The first 5 lines of the input file MUST be as shown above, with the first being "AdjacencyHypergraph",
 and the following four being
