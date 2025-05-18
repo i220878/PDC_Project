@@ -1,11 +1,11 @@
 # Implementation
 
 Currently, sequential and parallel implementations have been done:
-1. Degree-based Ranking
-2. Sorting for Wedge aggregation
-3. SEQUENTIAL butterfly counting, NO atomic adds or batching yet.
-4. NO Peeling / decomposition implemented.
-5. NO Approximation implemented.
+1. Degree-based, Approximate degree, Side-order based Ranking
+2. Sorting, hashing, and batching for Wedge aggregation
+3. Parallel butterfly counting with atomic adds.
+4. Peeling / decomposition implemented.
+5. Approximation implemented.
 
 Simply compile the file with `make` and run `./SequentialBipartiteButterflies` for the sequential version, or `./ParallelBipartiteButterflies` for the Bipartite Implementation.
 Further parallel optimisations should be made
